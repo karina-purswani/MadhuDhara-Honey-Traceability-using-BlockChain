@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "HiveTelemetryPayload",
+  "type": "object",
+  "required": [
+    "hive_id",
+    "timestamp",
+    "temperature_c",
+    "humidity_pct",
+    "weight_kg",
+    "battery_pct"
+  ],
+  "properties": {
+    "hive_id": {
+      "type": "string",
+      "pattern": "^HC-HIVE-[A-Z]{2}-[A-Z0-9]{3}-[0-9]{5}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "temperature_c": {
+      "type": "number",
+      "minimum": -10,
+      "maximum": 60,
+      "description": "Internal brood temperature in Celsius (optimum 34.0 - 35.5)"
+    },
+    "humidity_pct": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Relative humidity percentage inside hive (optimum 50 - 65%)"
+    },
+    "weight_kg": {
+      "type": "number",
+      "minimum": 5,
+      "maximum": 120,
+      "description": "Gross weight measured by HX711 scale platform"
+    },
+    "activity_level": {
+      "type": "string",
+      "enum": ["low", "normal", "high", "agitated"]
+    },
+    "acoustic_frequency_hz": {
+      "type": "number",
+      "description": "Peak audio resonance from MEMS microphone (normal 400-500Hz)"
+    },
+    "battery_pct": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "signal_rssi": {
+      "type": "integer",
+      "description": "LoRaWAN / 4G / Wi-Fi RSSI in dBm"
+    }
+  }
+}

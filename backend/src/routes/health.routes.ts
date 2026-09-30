@@ -1,0 +1,13 @@
+/**
+ * Health Check Routes
+ * Public endpoint: GET /api/health
+ */
+
+import { Router } from 'express';
+import { HealthController } from '../controllers/health.controller';
+
+const router = Router();
+
+router.get('/', HealthController.check);
+
+export const healthRoutes = router;

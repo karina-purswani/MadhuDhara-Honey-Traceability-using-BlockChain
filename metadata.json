@@ -1,0 +1,6 @@
+{
+  "name": "Honey Chain - Blockchain Honey Traceability & Smart Beekeeping",
+  "description": "An integrated digital ecosystem for KVIC Honey Mission combining blockchain honey traceability, QR consumer verification, IoT hive monitoring, and AI health analysis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

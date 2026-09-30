@@ -1,0 +1,199 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         request.auth.token.email == 'admin@example.com');
+    }
+
+    // 1. Users collection: users/{firebaseUid}
+    // Authenticated users can read and write their own document.
+    // Admins can read all user documents.
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // 2. Beekeepers collection: beekeepers/{firebaseUid}
+    // A beekeeper can read and write only their own profile.
+    // Admins can read all beekeeper profiles.
+    match /beekeepers/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // 3. Apiaries collection: apiaries/{apiaryId}
+    // A beekeeper can read, create, and update apiaries where beekeeperUid matches their UID.
+    // Admins can read all apiaries.
+    match /apiaries/{apiaryId} {
+      allow read: if isAuthenticated() && (resource.data.beekeeperUid == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.beekeeperUid == request.auth.uid;
+      allow update: if isAuthenticated() && (resource.data.beekeeperUid == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // 4. Hives collection: hives/{hiveId}
+    // A beekeeper can read and manage their own hives.
+    // Admins can read all hives.
+    match /hives/{hiveId} {
+      allow read: if isAuthenticated() && (resource.data.beekeeperUid == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.beekeeperUid == request.auth.uid;
+      allow update: if isAuthenticated() && (resource.data.beekeeperUid == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // 5. Harvests collection: harvests/{harvestId}
+    // A beekeeper can read and manage only their own harvest records.
+    // Admins can inspect harvests.
+    match /harvests/{harvestId} {
+      allow read: if isAuthenticated() && (resource.data.beekeeperUid == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.beekeeperUid == request.auth.uid;
+      allow update: if isAuthenticated() && (resource.data.beekeeperUid == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // 6. Batches collection: batches/{batchNumber}
+    // Private canonical batches accessible only to the producer beekeeper and admin.
+    match /batches/{batchNumber} {
+      allow read: if isAuthenticated() && (resource.data.beekeeperUid == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.beekeeperUid == request.auth.uid;
+      allow update: if isAuthenticated() && (resource.data.beekeeperUid == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // 7. Batch Events collection: batch_events/{eventId}
+    match /batch_events/{eventId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    // 8. QR Records: qr_records/{batchNumber}
+    // Public consumers must be able to resolve deterministic QR codes without logging in.
+    match /qr_records/{batchNumber} {
+      allow read: if true;
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    // 9. Public Batches: public_batches/{batchNumber}
+    // Explicit public verification documents accessible by consumers without authentication.
+    match /public_batches/{batchNumber} {
+      allow read: if true;
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    // 10. Hive Alerts: alerts/{alertId}
+    // Beekeepers can only read and manage alerts linked to their own beekeeperUid.
+    // Admins can read all alerts. Consumers cannot access alerts.
+    match /alerts/{alertId} {
+      allow read: if isAuthenticated() && (resource.data.beekeeperUid == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && (request.resource.data.beekeeperUid == request.auth.uid || isAdmin());
+      allow update: if isAuthenticated() && (resource.data.beekeeperUid == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // 11. Support Tickets: tickets/{ticketId}
+    // Beekeepers can create and view tickets linked to their own beekeeperUid.
+    // Admins can view and update tickets across beekeepers.
+    // Consumers cannot access tickets.
+    match /tickets/{ticketId} {
+      allow read: if isAuthenticated() && (resource.data.beekeeperUid == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.beekeeperUid == request.auth.uid;
+      allow update: if isAuthenticated() && (resource.data.beekeeperUid == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // 12. Ticket Messages: ticket_messages/{messageId}
+    // Beekeepers can only read and create messages for tickets belonging to their own Firebase UID.
+    // Admins can read all messages and post responses for authorized tickets.
+    // Consumers cannot access messages.
+    match /ticket_messages/{messageId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        get(/databases/$(database)/documents/tickets/$(resource.data.ticketId)).data.beekeeperUid == request.auth.uid
+      );
+      allow create: if isAuthenticated() && (
+        isAdmin() ||
+        (get(/databases/$(database)/documents/tickets/$(request.resource.data.ticketId)).data.beekeeperUid == request.auth.uid &&
+         request.resource.data.senderUid == request.auth.uid)
+      );
+      allow update, delete: if isAdmin();
+    }
+
+    // 13. Learning Content: learning_content/{contentId}
+    // Authenticated beekeepers can read published tutorials and guides.
+    // Only KVIC Admins can create, update, publish, or delete learning content.
+    // Consumers cannot access learning management data.
+    match /learning_content/{contentId} {
+      allow read: if isAuthenticated() && (resource.data.status == 'published' || isAdmin());
+      allow create, update, delete: if isAdmin();
+    }
+
+    // 14. Notifications: notifications/{notificationId}
+    // Beekeepers can read and mark as read only their own notifications.
+    // Admins can dispatch notifications and view all notifications.
+    // Beekeepers cannot modify another user's notifications.
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.recipientUid == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated() && (
+        isAdmin() ||
+        request.resource.data.recipientUid == request.auth.uid ||
+        request.resource.data.userId == request.auth.uid
+      );
+      allow update: if isAuthenticated() && (
+        resource.data.recipientUid == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // 15. Marketplace Products: marketplace_products/{productId}
+    // Public consumers: can read public/active marketplace products without authentication.
+    // Beekeepers: can create listings only for themselves; can read/update/delete only their own listings.
+    // Admin: can read and manage all marketplace records.
+    match /marketplace_products/{productId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && (request.resource.data.beekeeperUid == request.auth.uid || isAdmin());
+      allow update, delete: if isAuthenticated() && (resource.data.beekeeperUid == request.auth.uid || isAdmin());
+    }
+
+    // 16. Order Requests: order_requests/{orderRequestId}
+    // Consumers: can create an order/enquiry request through the public flow without authentication.
+    // Beekeepers: can read and update requests only concerning their own products.
+    // Admin: can inspect and manage all order requests.
+    // Unauthenticated consumers and other beekeepers cannot read or harvest order requests.
+    match /order_requests/{orderRequestId} {
+      allow create: if true;
+      allow read: if isAuthenticated() && (resource.data.beekeeperUid == request.auth.uid || isAdmin());
+      allow update: if isAuthenticated() && (resource.data.beekeeperUid == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // Default deny for unauthenticated or unspecified access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
