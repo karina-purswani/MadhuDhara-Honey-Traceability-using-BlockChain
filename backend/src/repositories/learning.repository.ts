@@ -151,6 +151,32 @@ export class LearningRepository {
       } catch (err: any) {
         console.warn(`[LearningRepository] createLearningContent write error for ${docId}:`, err?.message || err);
       }
+    } else {
+      try {
+        const { ensureSystemAdminAuth } = await import('../services/system-auth.service');
+        await ensureSystemAdminAuth();
+        const { firestoreLearningRepository } = await import(
+          '../../../src/services/firestore/learning.repository'
+        );
+        await firestoreLearningRepository.createLearningContent({
+          id: docId,
+          contentId: docId,
+          title: content.title,
+          description: content.description,
+          category: learningItem.category,
+          youtubeUrl: content.youtubeUrl,
+          thumbnailUrl: content.thumbnailUrl || undefined,
+          duration: duration,
+          durationMinutes: duration,
+          language: learningItem.language,
+          publishedBy: learningItem.authorName,
+          publishedAt: now,
+          viewsCount: 0,
+          status: content.status || 'published',
+        });
+      } catch (fbErr) {
+        console.warn(`[LearningRepository] Fallback createLearningContent error:`, fbErr);
+      }
     }
 
     try {
@@ -274,6 +300,19 @@ export class LearningRepository {
   }
 
   private mapDoc(id: string, data: any): LearningContent {
+    let publishedDate = '2026-03-01';
+    if (typeof data.publishedDate === 'string' && data.publishedDate) {
+      publishedDate = data.publishedDate;
+    } else if (typeof data.publishedAt === 'string' && data.publishedAt) {
+      publishedDate = data.publishedAt.split('T')[0];
+    } else if (typeof data.createdAt === 'string') {
+      publishedDate = data.createdAt.split('T')[0];
+    } else if (data.createdAt && typeof data.createdAt.toDate === 'function') {
+      publishedDate = data.createdAt.toDate().toISOString().split('T')[0];
+    } else if (data.publishedAt && typeof data.publishedAt.toDate === 'function') {
+      publishedDate = data.publishedAt.toDate().toISOString().split('T')[0];
+    }
+
     return {
       id: data.contentId || id,
       title: data.title || '',
@@ -283,7 +322,7 @@ export class LearningRepository {
       thumbnailUrl: data.thumbnailUrl || undefined,
       durationMinutes: Number(data.durationMinutes || data.duration || 15),
       language: data.language || 'en',
-      publishedDate: data.publishedDate || (data.createdAt ? data.createdAt.split('T')[0] : '2026-03-01'),
+      publishedDate,
       authorName: data.authorName || data.publishedBy || 'KVIC Directorate of Honey Mission',
       viewsCount: Number(data.viewsCount || 0),
     };
@@ -301,7 +340,8 @@ export class LearningRepository {
     } catch {
       // ignore
     }
-    return [];
+    const { mockDb } = await import('./mock.db');
+    return Array.from(mockDb.learningContent.values());
   }
 
   private async getFallbackAllContent(): Promise<LearningContent[]> {

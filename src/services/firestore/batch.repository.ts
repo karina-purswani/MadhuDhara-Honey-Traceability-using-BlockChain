@@ -29,7 +29,7 @@ export class FirestoreBatchRepository {
     return new Date().toISOString();
   }
 
-  public async getBatchesByBeekeeper(beekeeperUid: string): Promise<FirestoreBatchDoc[]> {
+  public async getBatchesByBeekeeper(beekeeperUid: string, beekeeperId?: string): Promise<FirestoreBatchDoc[]> {
     if (!db) return [];
     try {
       const q = query(
@@ -37,7 +37,27 @@ export class FirestoreBatchRepository {
         where('beekeeperUid', '==', beekeeperUid)
       );
       const snapshot = await getDocs(q);
-      return snapshot.docs.map((d) => this.mapDoc(d.id, d.data()));
+      const results = snapshot.docs.map((d) => this.mapDoc(d.id, d.data()));
+
+      if (beekeeperId && beekeeperId !== beekeeperUid) {
+        try {
+          const q2 = query(
+            collection(db, this.collectionName),
+            where('beekeeperId', '==', beekeeperId)
+          );
+          const snap2 = await getDocs(q2);
+          const existingIds = new Set(results.map((r) => r.id));
+          snap2.docs.forEach((d) => {
+            if (!existingIds.has(d.id)) {
+              results.push(this.mapDoc(d.id, d.data()));
+            }
+          });
+        } catch {
+          // ignore
+        }
+      }
+
+      return results;
     } catch (error) {
       console.warn(`FirestoreBatchRepository.getBatchesByBeekeeper error:`, error);
       return [];

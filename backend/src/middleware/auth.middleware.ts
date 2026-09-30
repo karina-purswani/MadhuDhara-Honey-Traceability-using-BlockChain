@@ -80,6 +80,15 @@ export async function requireAuth(
         } else if (email === 'admin@example.com') {
           role = 'KVIC_ADMIN';
         }
+
+        if (!beekeeperId && role === 'BEEKEEPER') {
+          const bkDoc = await adminFirestore.collection('beekeepers').doc(uid).get();
+          if (bkDoc.exists) {
+            const bkData = bkDoc.data();
+            beekeeperId = bkData?.beekeeperId;
+            name = name || bkData?.name;
+          }
+        }
       } else {
         // In local mode without service account, resolve role by email
         if (email === 'admin@example.com') {
@@ -181,6 +190,15 @@ export async function optionalAuth(
           name = data?.name || name;
         } else if (email === 'admin@example.com') {
           role = 'KVIC_ADMIN';
+        }
+
+        if (!beekeeperId && role === 'BEEKEEPER') {
+          const bkDoc = await adminFirestore.collection('beekeepers').doc(uid).get();
+          if (bkDoc.exists) {
+            const bkData = bkDoc.data();
+            beekeeperId = bkData?.beekeeperId;
+            name = name || bkData?.name;
+          }
         }
       } else {
         if (email === 'admin@example.com') {

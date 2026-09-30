@@ -4,8 +4,26 @@
  * Backend-only variables are strictly maintained here and not leaked to the frontend.
  */
 
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load root .env first for shared VITE_FIREBASE_* configs
+const rootEnvPath = path.resolve(__dirname, '../../../.env');
+if (fs.existsSync(rootEnvPath)) {
+  dotenv.config({ path: rootEnvPath });
+}
 dotenv.config();
+
+// Override with backend/.env for server-specific credentials
+const backendEnvPath = path.resolve(__dirname, '../../.env');
+if (fs.existsSync(backendEnvPath)) {
+  dotenv.config({ path: backendEnvPath, override: true });
+}
 
 export const envConfig = {
   nodeEnv: process.env.NODE_ENV || 'development',

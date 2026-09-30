@@ -6,6 +6,7 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   setDoc,
   updateDoc,
@@ -100,6 +101,46 @@ export class FirestoreHiveRepository {
       createdAt: now,
       updatedAt: now,
     };
+  }
+
+  public async recordHiveExtraction(hiveId: string, quantityKg: number): Promise<void> {
+    if (!db) return;
+    const cleanKg = Number(quantityKg) || 0;
+    const today = new Date().toISOString().split('T')[0];
+
+    try {
+      const ref = doc(db, this.collectionName, hiveId);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const d = snap.data();
+        const currentYield = Number(d.lifetimeHoneyYieldKg || 0);
+        const currentHarvests = Number(d.totalHarvestsCount || 0);
+        await updateDoc(ref, {
+          lifetimeHoneyYieldKg: Number((currentYield + cleanKg).toFixed(1)),
+          totalHarvestsCount: currentHarvests + 1,
+          lastInspectionDate: today,
+          updatedAt: serverTimestamp(),
+        });
+        return;
+      }
+
+      const q = query(collection(db, this.collectionName), where('hiveId', '==', hiveId));
+      const qSnap = await getDocs(q);
+      if (!qSnap.empty) {
+        const dRef = qSnap.docs[0].ref;
+        const d = qSnap.docs[0].data();
+        const currentYield = Number(d.lifetimeHoneyYieldKg || 0);
+        const currentHarvests = Number(d.totalHarvestsCount || 0);
+        await updateDoc(dRef, {
+          lifetimeHoneyYieldKg: Number((currentYield + cleanKg).toFixed(1)),
+          totalHarvestsCount: currentHarvests + 1,
+          lastInspectionDate: today,
+          updatedAt: serverTimestamp(),
+        });
+      }
+    } catch (err) {
+      console.warn(`FirestoreHiveRepository.recordHiveExtraction error for ${hiveId}:`, err);
+    }
   }
 
   private mapDoc(id: string, data: any): FirestoreHiveDoc {

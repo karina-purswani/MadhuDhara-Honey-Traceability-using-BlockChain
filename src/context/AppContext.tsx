@@ -186,7 +186,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (isAdmin) {
             fsBatches = await firestoreBatchRepository.getAllBatches();
           } else if (currentUser?.firebaseUid) {
-            fsBatches = await firestoreBatchRepository.getBatchesByBeekeeper(currentUser.firebaseUid);
+            fsBatches = await firestoreBatchRepository.getBatchesByBeekeeper(currentUser.firebaseUid, currentBeekeeperId || undefined);
           }
           if (fsBatches && fsBatches.length > 0) {
             setAllBatches(fsBatches as HoneyBatch[]);
@@ -228,7 +228,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // 1. Load published learning resources strictly from backend API (with Firestore fallback)
       try {
         const apiLearning = await getLearningContent();
-        setLearningItems(apiLearning || []);
+        if (apiLearning && apiLearning.length > 0) {
+          setLearningItems(apiLearning);
+        } else {
+          const firestoreLearning = await firestoreIdentityService.loadPublishedLearningContent();
+          if (firestoreLearning && firestoreLearning.length > 0) {
+            setLearningItems(firestoreLearning);
+          } else {
+            setLearningItems(apiLearning || []);
+          }
+        }
       } catch (err) {
         console.warn('Could not load learning content from API, falling back to Firestore:', err);
         try {
@@ -365,8 +374,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ? allTickets.filter((t) => t.beekeeperId === currentBeekeeperId)
     : allTickets;
 
-  const batches = isBeekeeper && currentBeekeeperId
-    ? allBatches.filter((b) => b.beekeeperId === currentBeekeeperId)
+  const batches = isBeekeeper
+    ? allBatches.filter((b) => {
+        if (!currentBeekeeperId && !currentUser?.firebaseUid && !currentUser?.id) return true;
+        const matchesId = Boolean(currentBeekeeperId && (b.beekeeperId === currentBeekeeperId || (b as any).beekeeperUid === currentBeekeeperId));
+        const matchesUid = Boolean(currentUser?.firebaseUid && (b.beekeeperId === currentUser.firebaseUid || (b as any).beekeeperUid === currentUser.firebaseUid));
+        const matchesUserId = Boolean(currentUser?.id && (b.beekeeperId === currentUser.id || (b as any).beekeeperUid === currentUser.id));
+        return matchesId || matchesUid || matchesUserId;
+      })
     : allBatches;
 
   // Selected hive for IoT view (defaults to first genuine registered hive)
@@ -732,6 +747,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         hiveBoxNumber: selectedHive?.boxNumber,
         apiaryId: selectedHive?.apiaryId,
         apiaryName: `${currentUser?.name || 'Ramesh Patil'}'s Apiary`,
+        beekeeperId: currentBeekeeperId || currentUser?.id || undefined,
       });
     } catch (err) {
       console.warn('Could not create batch via API, falling back to direct Firestore:', err);
@@ -770,6 +786,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     mockDb.batches.set(newBatch.id, newBatch);
     setAllBatches((prev) => [newBatch, ...prev]);
+
+    // Update hive lifetime extraction yield and total harvests on the Hive Passport
+    const cleanKg = Number(params.quantityKg) || 0;
+    setAllHives((prev) =>
+      prev.map((h) =>
+        h.id === params.hiveId
+          ? {
+              ...h,
+              lifetimeHoneyYieldKg: Number(((h.lifetimeHoneyYieldKg || 0) + cleanKg).toFixed(1)),
+              totalHarvestsCount: (h.totalHarvestsCount || 0) + 1,
+            }
+          : h
+      )
+    );
+
+    const curMock = mockDb.hives.get(params.hiveId);
+    if (curMock) {
+      curMock.lifetimeHoneyYieldKg = Number(((curMock.lifetimeHoneyYieldKg || 0) + cleanKg).toFixed(1));
+      curMock.totalHarvestsCount = (curMock.totalHarvestsCount || 0) + 1;
+      mockDb.hives.set(params.hiveId, curMock);
+    }
+
+    firestoreHiveRepository.recordHiveExtraction(params.hiveId, cleanKg).catch((hErr) =>
+      console.warn('Could not record hive extraction in Firestore:', hErr)
+    );
 
     return newBatch;
   };

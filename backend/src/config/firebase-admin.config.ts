@@ -6,10 +6,28 @@
 
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { initializeApp, getApps, getApp, cert, App } from 'firebase-admin/app';
 import { getAuth, Auth } from 'firebase-admin/auth';
 import { getFirestore, Firestore } from 'firebase-admin/firestore';
 import { envConfig } from './env.config';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+function resolveServiceAccountPath(keyPath: string): string | null {
+  if (!keyPath) return null;
+  if (path.isAbsolute(keyPath) && fs.existsSync(keyPath)) return keyPath;
+  const candidates = [
+    path.resolve(process.cwd(), keyPath),
+    path.resolve(__dirname, '../../', keyPath),
+    path.resolve(process.cwd(), 'backend', keyPath),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return null;
+}
 
 function initFirebaseAdmin(): App {
   const existingApps = getApps();
@@ -22,11 +40,9 @@ function initFirebaseAdmin(): App {
   try {
     // Strategy 1: Explicit Service Account JSON File Path
     if (serviceAccountKeyPath) {
-      const resolvedPath = path.isAbsolute(serviceAccountKeyPath)
-        ? serviceAccountKeyPath
-        : path.resolve(process.cwd(), serviceAccountKeyPath);
+      const resolvedPath = resolveServiceAccountPath(serviceAccountKeyPath);
 
-      if (fs.existsSync(resolvedPath)) {
+      if (resolvedPath && fs.existsSync(resolvedPath)) {
         const fileContent = fs.readFileSync(resolvedPath, 'utf8');
         const serviceAccount = JSON.parse(fileContent);
 
@@ -84,11 +100,7 @@ function initFirebaseAdmin(): App {
 
 export const hasAdminCredentials: boolean = Boolean(
   (envConfig.firebase.serviceAccountKeyPath &&
-    (fs.existsSync(
-      path.isAbsolute(envConfig.firebase.serviceAccountKeyPath)
-        ? envConfig.firebase.serviceAccountKeyPath
-        : path.resolve(process.cwd(), envConfig.firebase.serviceAccountKeyPath)
-    ) ||
+    (Boolean(resolveServiceAccountPath(envConfig.firebase.serviceAccountKeyPath)) ||
       envConfig.firebase.serviceAccountKeyPath.trim().startsWith('{'))) ||
   (envConfig.firebase.clientEmail && envConfig.firebase.privateKey)
 );

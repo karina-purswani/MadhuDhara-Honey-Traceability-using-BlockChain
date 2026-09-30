@@ -150,6 +150,51 @@ export class HivesRepository {
     }
   }
 
+  public async recordHiveExtraction(hiveId: string, quantityKg: number): Promise<void> {
+    const now = new Date().toISOString();
+    const cleanKg = Number(quantityKg) || 0;
+
+    if (hasAdminCredentials) {
+      try {
+        let hiveRef = adminFirestore.collection('hives').doc(hiveId);
+        let snap = await hiveRef.get();
+        if (!snap.exists) {
+          const qSnap = await adminFirestore.collection('hives').where('hiveId', '==', hiveId).limit(1).get();
+          if (!qSnap.empty) {
+            hiveRef = qSnap.docs[0].ref;
+            snap = qSnap.docs[0];
+          }
+        }
+
+        if (snap.exists) {
+          const currentYield = Number(snap.data()?.lifetimeHoneyYieldKg || 0);
+          const currentHarvests = Number(snap.data()?.totalHarvestsCount || 0);
+          await hiveRef.update({
+            lifetimeHoneyYieldKg: Number((currentYield + cleanKg).toFixed(1)),
+            totalHarvestsCount: currentHarvests + 1,
+            lastInspectionDate: now.split('T')[0],
+            updatedAt: now,
+          });
+        }
+      } catch (err: any) {
+        console.warn(`[HivesRepository] recordHiveExtraction error for ${hiveId}:`, err?.message || err);
+      }
+    }
+
+    try {
+      const { mockDb } = await import('./mock.db');
+      const hive = mockDb.hives.get(hiveId) || Array.from(mockDb.hives.values()).find((h) => h.id === hiveId);
+      if (hive) {
+        hive.lifetimeHoneyYieldKg = Number(((hive.lifetimeHoneyYieldKg || 0) + cleanKg).toFixed(1));
+        hive.totalHarvestsCount = (hive.totalHarvestsCount || 0) + 1;
+        hive.lastInspectionDate = now.split('T')[0];
+        mockDb.hives.set(hive.id, hive);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   private async getFallbackHiveDetail(hiveId: string): Promise<HiveDetailResponse> {
     try {
       const { ensureSystemAdminAuth } = await import('../services/system-auth.service');

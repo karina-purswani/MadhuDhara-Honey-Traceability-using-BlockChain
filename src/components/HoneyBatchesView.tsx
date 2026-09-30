@@ -32,6 +32,13 @@ export const HoneyBatchesView: React.FC<HoneyBatchesViewProps> = ({ onNavigateTa
   const [isMinting, setIsMinting] = useState(false);
   const [newlyCreatedBatch, setNewlyCreatedBatch] = useState<HoneyBatch | null>(null);
 
+  // Sync selectedHiveId when hives load asynchronously
+  React.useEffect(() => {
+    if (!selectedHiveId && hives.length > 0) {
+      setSelectedHiveId(hives[0].id);
+    }
+  }, [hives, selectedHiveId]);
+
   // QR Modal viewer
   const [qrModalBatch, setQrModalBatch] = useState<HoneyBatch | null>(null);
   const [qrModalDataUrl, setQrModalDataUrl] = useState<string>('');
@@ -46,11 +53,12 @@ export const HoneyBatchesView: React.FC<HoneyBatchesViewProps> = ({ onNavigateTa
     e.preventDefault();
     setIsMinting(true);
 
+    const targetHiveId = selectedHiveId || hives[0]?.id || '';
     const batch = await createHoneyBatch({
       productName,
       floralSource,
       quantityKg,
-      hiveId: selectedHiveId,
+      hiveId: targetHiveId,
     });
 
     setIsMinting(false);

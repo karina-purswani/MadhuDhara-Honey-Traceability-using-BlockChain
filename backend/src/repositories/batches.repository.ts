@@ -11,25 +11,32 @@ export class BatchesRepository {
   private eventsCollectionName = 'batch_events';
   private publicCollectionName = 'public_batches';
 
-  public async getBatchesByBeekeeper(beekeeperUid: string): Promise<HoneyBatch[]> {
+  public async getBatchesByBeekeeper(beekeeperUid: string, beekeeperId?: string): Promise<HoneyBatch[]> {
     if (!hasAdminCredentials) {
-      return await this.getFallbackBatchesByBeekeeper(beekeeperUid);
+      return await this.getFallbackBatchesByBeekeeper(beekeeperUid, beekeeperId);
     }
 
     try {
-      const snapshot = await adminFirestore
-        .collection(this.collectionName)
-        .where('beekeeperUid', '==', beekeeperUid)
-        .get();
-
-      if (!snapshot.empty) {
-        return snapshot.docs.map((d) => this.mapDoc(d.id, d.data()));
+      const allDocs = await adminFirestore.collection(this.collectionName).get();
+      if (!allDocs.empty) {
+        const matches = allDocs.docs
+          .map((d) => this.mapDoc(d.id, d.data()))
+          .filter((b) => {
+            const docUid = (b as any).beekeeperUid || '';
+            const docBkId = b.beekeeperId || '';
+            return (
+              docUid === beekeeperUid ||
+              docBkId === beekeeperUid ||
+              (beekeeperId && (docBkId === beekeeperId || docUid === beekeeperId))
+            );
+          });
+        return matches;
       }
 
-      return await this.getFallbackBatchesByBeekeeper(beekeeperUid);
+      return await this.getFallbackBatchesByBeekeeper(beekeeperUid, beekeeperId);
     } catch (err: any) {
       console.warn(`[BatchesRepository] getBatchesByBeekeeper error for ${beekeeperUid}:`, err?.message || err);
-      return await this.getFallbackBatchesByBeekeeper(beekeeperUid);
+      return await this.getFallbackBatchesByBeekeeper(beekeeperUid, beekeeperId);
     }
   }
 
@@ -208,6 +215,15 @@ export class BatchesRepository {
       } catch (err: any) {
         console.warn(`[BatchesRepository] createBatch write error for ${batchNumber}:`, err?.message || err);
       }
+    } else {
+      try {
+        const { ensureSystemAdminAuth } = await import('../services/system-auth.service');
+        await ensureSystemAdminAuth();
+        const { firestoreBatchRepository } = await import('../../../src/services/firestore/batch.repository');
+        await firestoreBatchRepository.createBatch(batch as any);
+      } catch (fbErr) {
+        console.warn('[BatchesRepository] Fallback createBatch error:', fbErr);
+      }
     }
 
     try {
@@ -255,14 +271,24 @@ export class BatchesRepository {
     };
   }
 
-  private async getFallbackBatchesByBeekeeper(beekeeperUid: string): Promise<HoneyBatch[]> {
+  private async getFallbackBatchesByBeekeeper(beekeeperUid: string, beekeeperId?: string): Promise<HoneyBatch[]> {
     try {
       const { ensureSystemAdminAuth } = await import('../services/system-auth.service');
       await ensureSystemAdminAuth();
       const { firestoreBatchRepository } = await import('../../../src/services/firestore/batch.repository');
-      const docs = await firestoreBatchRepository.getBatchesByBeekeeper(beekeeperUid);
+      const docs = await firestoreBatchRepository.getAllBatches();
       if (docs && docs.length > 0) {
-        return docs.map((d) => this.mapDoc(d.id, d));
+        return docs
+          .map((d) => this.mapDoc(d.id, d))
+          .filter((b) => {
+            const docUid = (b as any).beekeeperUid || '';
+            const docBkId = b.beekeeperId || '';
+            return (
+              docUid === beekeeperUid ||
+              docBkId === beekeeperUid ||
+              (beekeeperId && (docBkId === beekeeperId || docUid === beekeeperId))
+            );
+          });
       }
     } catch {
       // ignore
@@ -270,7 +296,10 @@ export class BatchesRepository {
 
     const { mockDb } = await import('./mock.db');
     return Array.from(mockDb.batches.values()).filter(
-      (b) => b.beekeeperId === beekeeperUid || b.beekeeperId.includes(beekeeperUid)
+      (b) =>
+        b.beekeeperId === beekeeperUid ||
+        b.beekeeperId.includes(beekeeperUid) ||
+        (beekeeperId && (b.beekeeperId === beekeeperId || b.beekeeperId.includes(beekeeperId)))
     );
   }
 

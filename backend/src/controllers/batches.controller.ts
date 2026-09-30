@@ -81,7 +81,7 @@ export class BatchesController {
         return;
       }
 
-      const { productName, floralSource, quantityKg, hiveId, hiveBoxNumber, apiaryId, apiaryName } = req.body;
+      const { productName, floralSource, quantityKg, hiveId, hiveBoxNumber, apiaryId, apiaryName, beekeeperId } = req.body;
 
       if (!productName || !floralSource || quantityKg === undefined || !hiveId) {
         ApiResponseUtil.badRequest(res, 'Missing required fields: productName, floralSource, quantityKg, hiveId');
@@ -97,6 +97,7 @@ export class BatchesController {
           hiveBoxNumber,
           apiaryId,
           apiaryName,
+          beekeeperId,
         },
         req.user
       );

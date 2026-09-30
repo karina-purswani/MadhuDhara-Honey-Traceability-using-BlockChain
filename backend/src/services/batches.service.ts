@@ -4,6 +4,7 @@
  */
 
 import { batchesRepository } from '../repositories/batches.repository';
+import { hivesRepository } from '../repositories/hives.repository';
 import { AuthenticatedUser } from '../middleware/auth.middleware';
 import { HoneyBatch, BatchEvent, BatchEventType } from '../../../shared/types';
 import { blockchainService } from '../../../blockchain/services/blockchain.service';
@@ -14,7 +15,7 @@ export class BatchesService {
     if (user.role === 'KVIC_ADMIN') {
       return await batchesRepository.getAllBatches();
     }
-    return await batchesRepository.getBatchesByBeekeeper(user.uid);
+    return await batchesRepository.getBatchesByBeekeeper(user.uid, user.beekeeperId);
   }
 
   public async getBatchByNumber(
@@ -68,6 +69,7 @@ export class BatchesService {
       hiveBoxNumber?: string;
       apiaryId?: string;
       apiaryName?: string;
+      beekeeperId?: string;
       packagingDate?: string;
       bestBeforeDate?: string;
       fssaiNumber?: string;
@@ -92,6 +94,7 @@ export class BatchesService {
     const bottleVolumeMl = 500;
     const quantityBottles = Math.floor((params.quantityKg * 1000) / bottleVolumeMl);
     const beekeeperName = user.name || 'Ramesh Patil';
+    const assignedBeekeeperId = params.beekeeperId || user.beekeeperId || user.uid;
 
     // 3. Lifecycle events
     const events: BatchEvent[] = [
@@ -156,7 +159,7 @@ export class BatchesService {
     const newBatch: HoneyBatch = {
       id: batchNumber,
       productName: params.productName,
-      beekeeperId: user.beekeeperId || user.uid,
+      beekeeperId: assignedBeekeeperId,
       beekeeperName,
       apiaryId: params.apiaryId || 'API-MH-NAS-01',
       apiaryName: params.apiaryName || `${beekeeperName}'s Apiary`,
@@ -187,11 +190,22 @@ export class BatchesService {
       events,
     };
 
-    return await batchesRepository.createBatch({
+    const created = await batchesRepository.createBatch({
       ...newBatch,
       beekeeperUid: user.uid,
       qrDataUrl,
     });
+
+    // Automatically update the hive's Lifetime Honey Yield and harvest count
+    if (params.hiveId) {
+      try {
+        await hivesRepository.recordHiveExtraction(params.hiveId, params.quantityKg);
+      } catch (hErr) {
+        console.warn(`[BatchesService] Could not record hive extraction for ${params.hiveId}:`, hErr);
+      }
+    }
+
+    return created;
   }
 }
 

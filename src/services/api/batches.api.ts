@@ -41,6 +41,7 @@ export async function createBatch(data: {
   hiveBoxNumber?: string;
   apiaryId?: string;
   apiaryName?: string;
+  beekeeperId?: string;
 }): Promise<HoneyBatch> {
   const res = await apiClient.post<HoneyBatch>('/batches', data, { requiresAuth: true });
   if (!res.data) {
